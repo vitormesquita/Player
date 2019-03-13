@@ -44,7 +44,7 @@ public enum PlaybackState: Int, CustomStringConvertible {
     case playing
     case paused
     case failed
-
+    
     public var description: String {
         get {
             switch self {
@@ -66,7 +66,7 @@ public enum BufferingState: Int, CustomStringConvertible {
     case unknown = 0
     case ready
     case delayed
-
+    
     public var description: String {
         get {
             switch self {
@@ -88,7 +88,7 @@ public let PlayerErrorDomain = "PlayerErrorDomain"
 /// Error types.
 public enum PlayerError: Error, CustomStringConvertible {
     case failed
-
+    
     public var description: String {
         get {
             switch self {
@@ -106,11 +106,12 @@ public protocol PlayerDelegate: AnyObject {
     func playerReady(_ player: Player)
     func playerPlaybackStateDidChange(_ player: Player)
     func playerBufferingStateDidChange(_ player: Player)
-
+    func playerExternalDidChange(_ player: Player)
+    
     // This is the time in seconds that the video has been buffered.
     // If implementing a UIProgressView, user this value / player.maximumDuration to set progress.
     func playerBufferTimeDidChange(_ bufferTime: Double)
-
+    
     func player(_ player: Player, didFailWithError error: Error?)
 }
 
@@ -127,15 +128,15 @@ public protocol PlayerPlaybackDelegate: AnyObject {
 
 /// ▶️ Player, simple way to play and stream media
 open class Player: UIViewController {
-
+    
     /// Player delegate.
     open weak var playerDelegate: PlayerDelegate?
-
+    
     /// Playback delegate.
     open weak var playbackDelegate: PlayerPlaybackDelegate?
-
+    
     // configuration
-
+    
     /// Local or remote URL for the file asset to be played.
     ///
     /// - Parameter url: URL of the asset.
@@ -146,14 +147,14 @@ open class Player: UIViewController {
             }
         }
     }
-
+    
     /// For setting up with AVAsset instead of URL
     /// Note: Resets URL (cannot set both)
     open var asset: AVAsset? {
         get { return _asset }
         set { _ = newValue.map { setupAsset($0) } }
     }
-
+    
     /// Specifies how the video is displayed within a player layer’s bounds.
     /// The default value is `AVLayerVideoGravityResizeAspect`. See `PlayerFillMode`.
     open var fillMode: PlayerFillMode {
@@ -164,12 +165,12 @@ open class Player: UIViewController {
             self._playerView.playerFillMode = newValue
         }
     }
-
+    
     /// Determines if the video should autoplay when a url is set
     ///
     /// - Parameter bool: defaults to true
     open var autoplay: Bool = true
-
+    
     /// Mutes audio playback when true.
     open var muted: Bool {
         get {
@@ -179,7 +180,7 @@ open class Player: UIViewController {
             self._avplayer.isMuted = newValue
         }
     }
-
+    
     /// Volume for the player, ranging from 0.0 to 1.0 on a linear scale.
     open var volume: Float {
         get {
@@ -189,21 +190,21 @@ open class Player: UIViewController {
             self._avplayer.volume = newValue
         }
     }
-
+    
     /// Pauses playback automatically when resigning active.
     open var playbackPausesWhenResigningActive: Bool = true
-
+    
     /// Pauses playback automatically when backgrounded.
     open var playbackPausesWhenBackgrounded: Bool = true
-
+    
     /// Resumes playback when became active.
     open var playbackResumesWhenBecameActive: Bool = true
-
+    
     /// Resumes playback when entering foreground.
     open var playbackResumesWhenEnteringForeground: Bool = true
-
+    
     // state
-
+    
     /// Playback automatically loops continuously when true.
     open var playbackLoops: Bool {
         get {
@@ -217,10 +218,10 @@ open class Player: UIViewController {
             }
         }
     }
-
+    
     /// Playback freezes on last frame frame at end when true.
     open var playbackFreezesAtEnd: Bool = false
-
+    
     /// Current playback state of the Player.
     open var playbackState: PlaybackState = .stopped {
         didSet {
@@ -231,7 +232,7 @@ open class Player: UIViewController {
             }
         }
     }
-
+    
     /// Current buffering state of the Player.
     open var bufferingState: BufferingState = .unknown {
         didSet {
@@ -242,13 +243,13 @@ open class Player: UIViewController {
             }
         }
     }
-
+    
     /// Playback buffering size in seconds.
     open var bufferSizeInSeconds: Double = 10
-
+    
     /// Playback is not automatically triggered from state changes when true.
     open var playbackEdgeTriggered: Bool = true
-
+    
     /// Maximum duration of playback.
     open var maximumDuration: TimeInterval {
         get {
@@ -259,7 +260,7 @@ open class Player: UIViewController {
             }
         }
     }
-
+    
     /// Media playback's current time.
     open var currentTime: TimeInterval {
         get {
@@ -270,13 +271,13 @@ open class Player: UIViewController {
             }
         }
     }
-
+    
     /// The natural dimensions of the media.
     open var naturalSize: CGSize {
         get {
             if let playerItem = self._playerItem,
                 let track = playerItem.asset.tracks(withMediaType: .video).first {
-
+                
                 let size = track.naturalSize.applying(track.preferredTransform)
                 return CGSize(width: abs(size.width), height: abs(size.height))
             } else {
@@ -284,26 +285,26 @@ open class Player: UIViewController {
             }
         }
     }
-
+    
     /// self.view as PlayerView type
     public var playerView: PlayerView {
         get {
             return self._playerView
         }
     }
-
+    
     /// Return the av player layer for consumption by things such as Picture in Picture
     open func playerLayer() -> AVPlayerLayer? {
         return self._playerView.playerLayer
     }
-
+    
     /// Indicates the desired limit of network bandwidth consumption for this item.
     open var preferredPeakBitRate: Double = 0 {
         didSet {
             self._playerItem?.preferredPeakBitRate = self.preferredPeakBitRate
         }
     }
-
+    
     /// Indicates a preferred upper limit on the resolution of the video to be downloaded.
     @available(iOS 11.0, tvOS 11.0, *)
     open var preferredMaximumResolution: CGSize {
@@ -315,9 +316,9 @@ open class Player: UIViewController {
             self._preferredMaximumResolution = newValue
         }
     }
-
+    
     // MARK: - private instance vars
-
+    
     internal var _asset: AVAsset? {
         didSet {
             if let _ = self._asset {
@@ -327,93 +328,93 @@ open class Player: UIViewController {
     }
     internal var _avplayer: AVPlayer = AVPlayer()
     internal var _playerItem: AVPlayerItem?
-
+    
     internal var _playerObservers = [NSKeyValueObservation]()
     internal var _playerItemObservers = [NSKeyValueObservation]()
     internal var _playerLayerObserver: NSKeyValueObservation?
     internal var _playerTimeObserver: Any?
-
+    
     internal var _playerView: PlayerView = PlayerView(frame: .zero)
     internal var _seekTimeRequested: CMTime?
     internal var _lastBufferTime: Double = 0
     internal var _preferredMaximumResolution: CGSize = .zero
-
+    
     // Boolean that determines if the user or calling coded has trigged autoplay manually.
     internal var _hasAutoplayActivated: Bool = true
-
+    
     // MARK: - object lifecycle
-
+    
     public convenience init() {
         self.init(nibName: nil, bundle: nil)
     }
-
+    
     public required init?(coder aDecoder: NSCoder) {
         self._avplayer.actionAtItemEnd = .pause
         super.init(coder: aDecoder)
     }
-
+    
     public override init(nibName nibNameOrNil: String?, bundle nibBundleOrNil: Bundle?) {
         self._avplayer.actionAtItemEnd = .pause
         super.init(nibName: nibNameOrNil, bundle: nibBundleOrNil)
     }
-
+    
     deinit {
         self._avplayer.pause()
         self.setupPlayerItem(nil)
-
+        
         self.removePlayerObservers()
-
+        
         self.playerDelegate = nil
         self.removeApplicationObservers()
-
+        
         self.playbackDelegate = nil
         self.removePlayerLayerObservers()
-
+        
         self._playerView.player = nil
     }
-
+    
     // MARK: - view lifecycle
-
+    
     open override func loadView() {
         super.loadView()
         self._playerView.frame = self.view.bounds
         self.view = self._playerView
     }
-
+    
     open override func viewDidLoad() {
         super.viewDidLoad()
-
+        
         if let url = self.url {
             setup(url: url)
         } else if let asset = self.asset {
             setupAsset(asset)
         }
-
+        
         self.addPlayerLayerObservers()
         self.addPlayerObservers()
         self.addApplicationObservers()
     }
-
+    
     open override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
         if self.playbackState == .playing {
             self.pause()
         }
     }
-
+    
 }
 
 // MARK: - action funcs
 
 extension Player {
-
+    
     /// Begins playback of the media from the beginning.
     open func playFromBeginning() {
         self.playbackDelegate?.playerPlaybackWillStartFromBeginning(self)
         self._avplayer.seek(to: CMTime.zero)
         self.playFromCurrentTime()
     }
-
+    
     /// Begins playback of the media from the current time.
     open func playFromCurrentTime() {
         if !self.autoplay {
@@ -422,35 +423,35 @@ extension Player {
         }
         self.play()
     }
-
+    
     fileprivate func play() {
         if self.autoplay || self._hasAutoplayActivated {
             self.playbackState = .playing
             self._avplayer.play()
         }
     }
-
+    
     /// Pauses playback of the media.
     open func pause() {
         if self.playbackState != .playing {
             return
         }
-
+        
         self._avplayer.pause()
         self.playbackState = .paused
     }
-
+    
     /// Stops playback of the media.
     open func stop() {
         if self.playbackState == .stopped {
             return
         }
-
+        
         self._avplayer.pause()
         self.playbackState = .stopped
         self.playbackDelegate?.playerPlaybackDidEnd(self)
     }
-
+    
     /// Updates playback to the specified time.
     ///
     /// - Parameters:
@@ -463,7 +464,7 @@ extension Player {
             _seekTimeRequested = time
         }
     }
-
+    
     /// Updates the playback time to the specified time bound.
     ///
     /// - Parameters:
@@ -476,7 +477,7 @@ extension Player {
             return playerItem.seek(to: time, toleranceBefore: toleranceBefore, toleranceAfter: toleranceAfter, completionHandler: completionHandler)
         }
     }
-
+    
     /// Captures a snapshot of the current Player asset.
     ///
     /// - Parameter completionHandler: Returns a UIImage of the requested video frame. (Great for thumbnails!)
@@ -487,12 +488,12 @@ extension Player {
             }
             return
         }
-
+        
         let imageGenerator = AVAssetImageGenerator(asset: asset)
         imageGenerator.appliesPreferredTrackTransform = true
-
+        
         let currentTime = self._playerItem?.currentTime() ?? CMTime.zero
-
+        
         imageGenerator.generateCGImagesAsynchronously(forTimes: [NSValue(time: currentTime)]) { (requestedTime, image, actualTime, result, error) in
             if let image = image {
                 switch result {
@@ -517,21 +518,21 @@ extension Player {
             }
         }
     }
-
+    
 }
 
 // MARK: - loading funcs
 
 extension Player {
-
+    
     fileprivate func setup(url: URL) {
         guard isViewLoaded else { return }
-
+        
         // ensure everything is reset beforehand
         if self.playbackState == .playing {
             self.pause()
         }
-
+        
         //Reset autoplay flag since a new url is set.
         self._hasAutoplayActivated = false
         if self.autoplay {
@@ -539,24 +540,24 @@ extension Player {
         } else {
             self.playbackState = .stopped
         }
-
+        
         self.setupPlayerItem(nil)
-
+        
         let asset = AVURLAsset(url: url, options: .none)
         self.setupAsset(asset)
     }
-
+    
     fileprivate func setupAsset(_ asset: AVAsset, loadableKeys: [String] = ["tracks", "playable", "duration"]) {
         guard isViewLoaded else { return }
-
+        
         if self.playbackState == .playing {
             self.pause()
         }
-
+        
         self.bufferingState = .unknown
-
+        
         self._asset = asset
-
+        
         self._asset?.loadValuesAsynchronously(forKeys: loadableKeys, completionHandler: { () -> Void in
             if let asset = self._asset {
                 for key in loadableKeys {
@@ -570,7 +571,7 @@ extension Player {
                         return
                     }
                 }
-
+                
                 if !asset.isPlayable {
                     self.playbackState = .failed
                     self.executeClosureOnMainQueueIfNecessary {
@@ -578,42 +579,42 @@ extension Player {
                     }
                     return
                 }
-
+                
                 let playerItem = AVPlayerItem(asset:asset)
                 self.setupPlayerItem(playerItem)
             }
         })
     }
-
+    
     fileprivate func setupPlayerItem(_ playerItem: AVPlayerItem?) {
-
+        
         self.removePlayerItemObservers()
-
+        
         if let currentPlayerItem = self._playerItem {
             NotificationCenter.default.removeObserver(self, name: .AVPlayerItemDidPlayToEndTime, object: currentPlayerItem)
             NotificationCenter.default.removeObserver(self, name: .AVPlayerItemFailedToPlayToEndTime, object: currentPlayerItem)
         }
-
+        
         self._playerItem = playerItem
-
+        
         self._playerItem?.preferredPeakBitRate = self.preferredPeakBitRate
         if #available(iOS 11.0, tvOS 11.0, *) {
             self._playerItem?.preferredMaximumResolution = self._preferredMaximumResolution
         }
-
+        
         if let seek = self._seekTimeRequested, self._playerItem != nil {
             self._seekTimeRequested = nil
             self.seek(to: seek)
         }
-
+        
         if let updatedPlayerItem = self._playerItem {
             self.addPlayerItemObservers()
             NotificationCenter.default.addObserver(self, selector: #selector(playerItemDidPlayToEndTime(_:)), name: .AVPlayerItemDidPlayToEndTime, object: updatedPlayerItem)
             NotificationCenter.default.addObserver(self, selector: #selector(playerItemFailedToPlayToEndTime(_:)), name: .AVPlayerItemFailedToPlayToEndTime, object: updatedPlayerItem)
         }
-
+        
         self._avplayer.replaceCurrentItem(with: self._playerItem)
-
+        
         // update new playerItem settings
         if self.playbackLoops {
             self._avplayer.actionAtItemEnd = .none
@@ -621,28 +622,28 @@ extension Player {
             self._avplayer.actionAtItemEnd = .pause
         }
     }
-
+    
 }
 
 // MARK: - NSNotifications
 
 extension Player {
-
+    
     // MARK: - UIApplication
-
+    
     internal func addApplicationObservers() {
         NotificationCenter.default.addObserver(self, selector: #selector(handleApplicationWillResignActive(_:)), name: UIApplication.willResignActiveNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(handleApplicationDidBecomeActive(_:)), name: UIApplication.didBecomeActiveNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(handleApplicationDidEnterBackground(_:)), name: UIApplication.didEnterBackgroundNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(handleApplicationWillEnterForeground(_:)), name: UIApplication.willEnterForegroundNotification, object: nil)
     }
-
+    
     internal func removeApplicationObservers() {
         NotificationCenter.default.removeObserver(self)
     }
-
+    
     // MARK: - AVPlayerItem handlers
-
+    
     @objc internal func playerItemDidPlayToEndTime(_ aNotification: Notification) {
         self.executeClosureOnMainQueueIfNecessary {
             if self.playbackLoops {
@@ -659,55 +660,55 @@ extension Player {
             }
         }
     }
-
+    
     @objc internal func playerItemFailedToPlayToEndTime(_ aNotification: Notification) {
         self.playbackState = .failed
     }
-
+    
     // MARK: - UIApplication handlers
-
+    
     @objc internal func handleApplicationWillResignActive(_ aNotification: Notification) {
         if self.playbackState == .playing && self.playbackPausesWhenResigningActive {
             self.pause()
         }
     }
-
+    
     @objc internal func handleApplicationDidBecomeActive(_ aNotification: Notification) {
         if self.playbackState == .paused && self.playbackResumesWhenBecameActive {
             self.play()
         }
     }
-
+    
     @objc internal func handleApplicationDidEnterBackground(_ aNotification: Notification) {
         if self.playbackState == .playing && self.playbackPausesWhenBackgrounded {
             self.pause()
         }
     }
-
+    
     @objc internal func handleApplicationWillEnterForeground(_ aNoticiation: Notification) {
         if self.playbackState != .playing && self.playbackResumesWhenEnteringForeground {
             self.play()
         }
     }
-
+    
 }
 
 // MARK: - KVO
 
 extension Player {
-
+    
     // MARK: - AVPlayerItemObservers
-
+    
     internal func addPlayerItemObservers() {
         guard let playerItem = self._playerItem else {
             return
         }
-
+        
         self._playerItemObservers.append(playerItem.observe(\.isPlaybackBufferEmpty, options: [.new, .old]) { [weak self] (object, change) in
             if object.isPlaybackBufferEmpty {
                 self?.bufferingState = .delayed
             }
-
+            
             switch object.status {
             case .readyToPlay:
                 self?._playerView.player = self?._avplayer
@@ -717,7 +718,7 @@ extension Player {
                 break
             }
         })
-
+        
         self._playerItemObservers.append(playerItem.observe(\.isPlaybackLikelyToKeepUp, options: [.new, .old]) { [weak self] (object, change) in
             if object.isPlaybackLikelyToKeepUp {
                 self?.bufferingState = .ready
@@ -725,7 +726,7 @@ extension Player {
                     self?.playFromCurrentTime()
                 }
             }
-
+            
             switch object.status {
             case .unknown:
                 fallthrough
@@ -737,17 +738,17 @@ extension Player {
                 break
             }
         })
-
-//        self._playerItemObservers.append(playerItem.observe(\.status, options: [.new, .old]) { (object, change) in
-//        })
-
+        
+        //        self._playerItemObservers.append(playerItem.observe(\.status, options: [.new, .old]) { (object, change) in
+        //        })
+        
         self._playerItemObservers.append(playerItem.observe(\.loadedTimeRanges, options: [.new, .old]) { [weak self] (object, change) in
             guard let strongSelf = self else {
                 return
             }
-
+            
             strongSelf.bufferingState = .ready
-
+            
             let timeRanges = object.loadedTimeRanges
             if let timeRange = timeRanges.first?.timeRangeValue {
                 let bufferedTime = CMTimeGetSeconds(CMTimeAdd(timeRange.start, timeRange.duration))
@@ -758,10 +759,10 @@ extension Player {
                     }
                 }
             }
-
+            
             let currentTime = CMTimeGetSeconds(object.currentTime())
             let passedTime = strongSelf._lastBufferTime <= 0 ? currentTime : (strongSelf._lastBufferTime - currentTime)
-
+            
             if (passedTime >= strongSelf.bufferSizeInSeconds ||
                 strongSelf._lastBufferTime == strongSelf.maximumDuration ||
                 timeRanges.first == nil) &&
@@ -770,16 +771,16 @@ extension Player {
             }
         })
     }
-
+    
     internal func removePlayerItemObservers() {
         for observer in self._playerItemObservers {
             observer.invalidate()
         }
         self._playerItemObservers.removeAll()
     }
-
+    
     // MARK: - AVPlayerLayerObservers
-
+    
     internal func addPlayerLayerObservers() {
         self._playerLayerObserver = self._playerView.playerLayer.observe(\.isReadyForDisplay, options: [.new, .old]) { [weak self] (object, change) in
             self?.executeClosureOnMainQueueIfNecessary {
@@ -789,14 +790,14 @@ extension Player {
             }
         }
     }
-
+    
     internal func removePlayerLayerObservers() {
         self._playerLayerObserver?.invalidate()
         self._playerLayerObserver = nil
     }
-
+    
     // MARK: - AVPlayerObservers
-
+    
     internal func addPlayerObservers() {
         self._playerTimeObserver = self._avplayer.addPeriodicTimeObserver(forInterval: CMTimeMake(value: 1, timescale: 100), queue: DispatchQueue.main, using: { [weak self] timeInterval in
             guard let strongSelf = self else {
@@ -804,7 +805,7 @@ extension Player {
             }
             strongSelf.playbackDelegate?.playerCurrentTimeDidChange(strongSelf)
         })
-
+        
         if #available(iOS 10.0, tvOS 10.0, *) {
             self._playerObservers.append(self._avplayer.observe(\.timeControlStatus, options: [.new, .old]) { [weak self] (object, change) in
                 switch object.timeControlStatus {
@@ -817,9 +818,13 @@ extension Player {
                 }
             })
         }
-
+        
+        self._playerObservers.append(self._avplayer.observe(\.isExternalPlaybackActive, options: [.new, .old]) { [weak self] (player, change) in
+            guard let self = self else { return }
+            self.playerDelegate?.playerExternalDidChange(self)
+        })
     }
-
+    
     internal func removePlayerObservers() {
         if let observer = self._playerTimeObserver {
             self._avplayer.removeTimeObserver(observer)
@@ -829,13 +834,35 @@ extension Player {
         }
         self._playerObservers.removeAll()
     }
+    
+}
 
+// MARK: - Airplay connection
+
+extension Player {
+    
+    /// Verify is external playback is actived
+    open var isExternalPlaybackActive: Bool {
+        return self._avplayer.isExternalPlaybackActive
+    }
+    
+    /// Allow player run with Airplay connection
+    open var allowExternalPlayback: Bool {
+        get { return self._avplayer.allowsExternalPlayback }
+        set { self._avplayer.allowsExternalPlayback = newValue }
+    }
+    
+    /// Use external playback automatically when it is actived
+    open var usesExternalPlaybackWhileExternalScreenIsActive: Bool {
+        get { return self._avplayer.usesExternalPlaybackWhileExternalScreenIsActive }
+        set { self._avplayer.usesExternalPlaybackWhileExternalScreenIsActive = newValue }
+    }
 }
 
 // MARK: - queues
 
 extension Player {
-
+    
     internal func executeClosureOnMainQueueIfNecessary(withClosure closure: @escaping () -> Void) {
         if Thread.isMainThread {
             closure()
@@ -843,29 +870,29 @@ extension Player {
             DispatchQueue.main.async(execute: closure)
         }
     }
-
+    
 }
 
 // MARK: - PlayerView
 
 public class PlayerView: UIView {
-
+    
     // MARK: - overrides
-
+    
     public override class var layerClass: AnyClass {
         get {
             return AVPlayerLayer.self
         }
     }
-
+    
     // MARK: - internal properties
-
+    
     internal var playerLayer: AVPlayerLayer {
         get {
             return self.layer as! AVPlayerLayer
         }
     }
-
+    
     internal var player: AVPlayer? {
         get {
             return self.playerLayer.player
@@ -875,9 +902,9 @@ public class PlayerView: UIView {
             self.playerLayer.isHidden = (self.playerLayer.player == nil)
         }
     }
-
+    
     // MARK: - public properties
-
+    
     public var playerBackgroundColor: UIColor? {
         get {
             if let cgColor = self.playerLayer.backgroundColor {
@@ -889,7 +916,7 @@ public class PlayerView: UIView {
             self.playerLayer.backgroundColor = newValue?.cgColor
         }
     }
-
+    
     public var playerFillMode: PlayerFillMode {
         get {
             return self.playerLayer.videoGravity
@@ -898,30 +925,30 @@ public class PlayerView: UIView {
             self.playerLayer.videoGravity = newValue
         }
     }
-
+    
     public var isReadyForDisplay: Bool {
         get {
             return self.playerLayer.isReadyForDisplay
         }
     }
-
+    
     // MARK: - object lifecycle
-
+    
     public override init(frame: CGRect) {
         super.init(frame: frame)
         self.playerLayer.isHidden = true
         self.playerFillMode = .resizeAspect
     }
-
+    
     required public init?(coder aDecoder: NSCoder) {
         super.init(coder: aDecoder)
         self.playerLayer.isHidden = true
         self.playerFillMode = .resizeAspect
     }
-
+    
     deinit {
         self.player?.pause()
         self.player = nil
     }
-
+    
 }
